@@ -13,9 +13,8 @@
 ********************************************************************************/
 #include "taskDataStructure.h"
 #include "cmdFlag.h"
-
-
 #define BUF_SIZE 1024000
+
 /********************************************************************************
 **
 **Function:transferModule
@@ -181,7 +180,7 @@ public:
 	}
 };
 
-//==================================================
+//========================================================
 
 //全局变量taksManager，负责管理任务
 //check taskmanager critical section
@@ -201,30 +200,45 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
 	EnterCriticalSection( & taskManagerCriticalSection );
 	int arg = *((int*)lpArg);
 	taskManager.EnterSpecifyCriticalSection( arg );
+	
+	//get task
 	TaskQueue * curQueue = taskManager.getSpecifyQueue(arg);
 	Task curTask =*( curQueue->getCurTask());
 	
 	int length = curTask.length - 32;//!!
 	char * data = curTask.data;
-	
-	char stMac[8] = {0};
-	for( int i = 10 ; i < 16 ; ++ i ){
-		stMac[i - 10] = data[i];
-	}
 
 	char cmdFlag = *data;
 	char formatFlag = *(data+1);
-	string taskMac( stMac );
+	char * dataSection = data;
+	string taskMac( data + 10 , data + 16 );
+	string targetMac;
+
+	if( length > 0 && data != NULL){
+		dataSection += 32;
+	}
 
 	puts("[server]:task thread running");
 	//TODO
 	switch(cmdFlag){//need to change status filed in Task
-	case WARD_REGISTER:
+	case REGISTER://need test
 		puts("[server]:register");
-		puts("r");
+		targetMac = string( dataSection , dataSection + 7 );
+		if( targetMac.length() == 6 ){
+			if(taskManager.registerQueue( taskMac , targetMac)){
+				//register success
+			}
+			else{
+				//failed .task manager full
+			}
+		}
+		else{
+			//failed.invalid data
+		}
+		
 		taskManager.removeFirst( 0 );
 		break;
-	case WARD_SENDTEXT:
+	case SENDTEXT:
 		puts("[server]:msg");
 		listener.sendDataToListener( "a" ,2,taskManager.getSpecifyQueue(0)->getCurTargetIP() , 6002);
 		taskManager.removeFirst( 0 );
@@ -268,7 +282,7 @@ unsigned int __stdcall processTasks( LPVOID lpArg ){
 			if( taskNum > 0){
 				handleArr[i] = (HANDLE)_beginthreadex( NULL , 0 , taskThread , arr + i , 0 ,NULL);		//problem here
 			}
-			//CloseHandle(handleArr[i]);//need test
+			CloseHandle(handleArr[i]);//need test
 		}
 		//WaitForMultipleObjects( taskQueueNum , handleArr , true , INFINITE );
 		LeaveCriticalSection( &taskManagerCriticalSection );
@@ -383,7 +397,7 @@ public:
 			if( arg.sock != INVALID_SOCKET ){
 				HANDLE h = (HANDLE)_beginthreadex( NULL , 0 , recvData , &arg , 0 , NULL );
 				puts("[server]:A new thread has been created.");
-				CloseHandle( h );
+				CloseHandle( h );//need test
 			}
 		}
 
