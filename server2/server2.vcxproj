@@ -76,10 +76,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="list.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cmdFlag.h" />
+    <ClInclude Include="list.h" />
     <ClInclude Include="server.h" />
     <ClInclude Include="taskDataStructure.h" />
   </ItemGroup>

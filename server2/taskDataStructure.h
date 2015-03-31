@@ -12,7 +12,7 @@
 **
 ********************************************************************************/
 
-#include <list>
+#include "list.h"
 #include <utility>
 #include <string>
 #include <iostream>
@@ -24,7 +24,7 @@
 #pragma comment(lib, "ws2_32.lib") 
 
 #define SRV_ERROR -1
-#define SRV_MAX_TASK_QUEUE_LENGTH 20
+#define SRV_MAX_TASK_QUEUE_LENGTH 25
 #define SRV_MAX_TASK_QUEUE_NUM 6
 
 #define S_TASK_INI 2
@@ -33,7 +33,7 @@
 
 using std::pair;
 using std::string;
-using std::list;
+//using std::list;
 using std::iterator;
 using std::cout;
 using std::endl;
@@ -210,13 +210,13 @@ public:
 
 	void printQueueInfo( void ){
 		//using std::iterator;
-		list<Task>::iterator it = taskList.begin();
+		//list<Task>::iterator it = taskList.begin();
 		
 		cout << "[taskQueue]"<< "ward=" << key.first << ' ' << ",target=" << key.second << endl
 			 << "[taskQueue]"<< "task num=" << curTaskNumber << endl
 			 << "[taskQueue]"<< "ward ip=" << curWardIP << ",target ip=" << curTargetIP << endl;
 		
-		for( int i = 0 ; i < curTaskNumber ; ++ i ){
+		/*for( int i = 0 ; i < curTaskNumber ; ++ i ){
 			if( it == taskList.end() )
 				break;
 
@@ -226,7 +226,7 @@ public:
 			}
 			putchar('\n');
 			it ++;
-		}
+		}*/
 	}
 };
 
@@ -345,6 +345,14 @@ public:
 			ret = taskQueues + index;
 		}
 		return ret;
+	}
+
+	void EnterSpecifyCriticalSection( int index ){
+		EnterCriticalSection( taskQueueCriticalSections + index );
+	}
+
+	void LeaveSpecifyCritialSection( int index ){
+		LeaveCriticalSection( taskQueueCriticalSections + index );
 	}
 
 	static int getMaxQueueNum(void ){

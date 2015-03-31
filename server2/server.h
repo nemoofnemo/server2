@@ -189,11 +189,19 @@ TaskManager taskManager;
 //全局变量listener，负责监听
 transferModule listener;
 
+//数据统计
+int log_connect;
+int log_recv;
+int log_use;
+int log_throw;
+
 //实现运行逻辑的线程
 //该线程运行时当前队列的isVisting为true，改善线程结束时isVisiting设为false
 unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
 	EnterCriticalSection( & taskManagerCriticalSection );
-	TaskQueue * curQueue = (TaskQueue *)lpArg;
+	int arg = *((int*)lpArg);
+	taskManager.EnterSpecifyCriticalSection( arg );
+	TaskQueue * curQueue = taskManager.getSpecifyQueue(arg);
 	Task curTask =*( curQueue->getCurTask());
 	
 	int length = curTask.length - 32;//!!
@@ -212,6 +220,7 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
 	//TODO
 	switch(cmdFlag){//need to change status filed in Task
 	case WARD_REGISTER:
+		puts("[server]:register");
 		puts("r");
 		taskManager.removeFirst( 0 );
 		break;
@@ -226,11 +235,14 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
 		exit(0);
 		break;
 	default:
-		puts("ok");
+		puts("[server]:ok");
 		taskManager.removeFirst( 0 );
 		break;
 	}
 
+	++ log_use;
+	taskManager.LeaveSpecifyCritialSection( arg );
+	printf("[server]:connection=%d,recv=%d,throw+%d,use=%d\n" , log_connect , log_recv , log_throw , log_use);
 	LeaveCriticalSection( & taskManagerCriticalSection );
 	return 0;
 }
@@ -240,7 +252,12 @@ unsigned int __stdcall processTasks( LPVOID lpArg ){
 	int taskNum = 0;
 	int taskQueueNum =0 ;
 	const int handleArrLen = taskManager.getMaxQueueNum();
+	int * arr = (int *)malloc(sizeof(int)*handleArrLen);
 	HANDLE * handleArr = (HANDLE *)malloc( sizeof(HANDLE) * handleArrLen);
+
+	for( int k = 0 ; k < handleArrLen ; ++ k ){
+		arr[k] = k;
+	}
 
 	while( true ){
 		EnterCriticalSection( &taskManagerCriticalSection );
@@ -249,14 +266,14 @@ unsigned int __stdcall processTasks( LPVOID lpArg ){
 			TaskQueue * ptr = taskManager.getSpecifyQueue(i);
 			taskNum = ptr->getTaskNumber();
 			if( taskNum > 0){
-				handleArr[i] = (HANDLE)_beginthreadex( NULL , 0 , taskThread , taskManager.getSpecifyQueue(i) , 0 ,NULL);		
+				handleArr[i] = (HANDLE)_beginthreadex( NULL , 0 , taskThread , arr + i , 0 ,NULL);		//problem here
 			}
 			//CloseHandle(handleArr[i]);//need test
 		}
 		//WaitForMultipleObjects( taskQueueNum , handleArr , true , INFINITE );
 		LeaveCriticalSection( &taskManagerCriticalSection );
-		//wait 2 ms
-		Sleep( 2 );
+		//wait 1 ms
+		Sleep( 1 );
 	}
 	return 0;
 }
@@ -300,16 +317,18 @@ unsigned int __stdcall recvData( LPVOID lpArg ){
 
 	//TODO : need find by mac.check length.ip
 	//judge
+	++ log_recv;
 	printf("[server]:recv data = %d" , count);
-	for( int d = 0 ;d < count;d ++){
+	/*for( int d = 0 ;d < count;d ++){
 		putchar( data[d]);
-	}
+	}*/
 	
 	EnterCriticalSection( &taskManagerCriticalSection );
 	if( !taskManager.addTask( 0 , data , count , ip.c_str() , ip.c_str() ) ){
+		puts("[server]:specify task queue full");
+		++ log_throw ;
 		//通知客户端重新发送
 	}
-	taskManager.printAll();
 	LeaveCriticalSection( &taskManagerCriticalSection );
 
 	//release
@@ -356,6 +375,7 @@ public:
 				puts("[server]:accept falied.");
 				continue;
 			}
+			++ log_connect;
 			puts("[server]:connection accepted.");
 			memcpy( arg.ip , listener.getClientIp() , 16 );
 			
@@ -363,7 +383,7 @@ public:
 			if( arg.sock != INVALID_SOCKET ){
 				HANDLE h = (HANDLE)_beginthreadex( NULL , 0 , recvData , &arg , 0 , NULL );
 				puts("[server]:A new thread has been created.");
-				//CloseHandle( h );
+				CloseHandle( h );
 			}
 		}
 
