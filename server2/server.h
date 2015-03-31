@@ -180,13 +180,10 @@ public:
 	}
 };
 
-//========================================================
-
 //全局变量taksManager，负责管理任务
-//check taskmanager critical section
-TaskManager taskManager;
+TaskManager taskManager;	//warning:Enter critical section before use TaskManager's methods!!!
 //全局变量listener，负责监听
-transferModule listener;
+transferModule listener;	//listener
 
 //数据统计
 int log_connect;
@@ -301,7 +298,7 @@ struct recvDataArg{
 	char ip[16];	//ip of socket
 };
 
-//非阻塞接收数据
+//接收数据的线程
 unsigned int __stdcall recvData( LPVOID lpArg ){
 	SOCKET sock = ((recvDataArg*)lpArg)->sock;
 	string ip(((recvDataArg*)lpArg)->ip);
@@ -393,7 +390,7 @@ public:
 			puts("[server]:connection accepted.");
 			memcpy( arg.ip , listener.getClientIp() , 16 );
 			
-			//start new thread
+			//启动新线程接收数据
 			if( arg.sock != INVALID_SOCKET ){
 				HANDLE h = (HANDLE)_beginthreadex( NULL , 0 , recvData , &arg , 0 , NULL );
 				puts("[server]:A new thread has been created.");

@@ -231,11 +231,31 @@ public:
 };
 
 
-//========================================================
 
-//status of taskmanager.initialise in taskmanager constructor
+//critical section of taskmanager.initialise in taskmanager constructor.(global)
 CRITICAL_SECTION taskManagerCriticalSection;
-//task manager.
+
+/********************************************************************************
+**
+**Function:task manager
+**Args    :
+**Return  :
+**Detail  :任务管理器类。
+**         包含多个任务队列，processTasks线程每次循环可同时处理所有队列的第一个任务。
+**
+**         用taskQueues数组存放所有任务队列，数组的元素依次对应taskQueueCriticalSections数组中的元素。
+**         taskQueueCriticalSections的元素用来标识对应位置的队列是否正在被处理。
+**         taskmanager类中的每一个方法都要使用EnterCriticalSection函数和LeaveCriticalSection函数来确保每
+**	个队列在同一时间只有一个线程在访问。
+**
+**         调用taskManager的除析构函数和构造函数之外的任意方法时,需要在调用之前EnterCriticalSection,调
+**	用之后LeaveCriticalSection，以确保taskManager在同一时间只被唯一的线程操作。全局变量
+**	taskManagerCriticalSection为taskmanager的关键字段。每个进程最多只能有一个TaskManager的对象。
+**
+**Author  :yuanyi
+**Date    :2015/3/31
+**
+********************************************************************************/
 class TaskManager{
 private:
 	int curQueueNumber;
@@ -359,7 +379,6 @@ public:
 		return SRV_MAX_TASK_QUEUE_NUM;
 	}
 
-	//need test
 	void printAll( void ){
 		cout << "[taskManager]task queue number:" << curQueueNumber << endl;
 		for( int i = 0 ; i < curQueueNumber ; ++ i ){
