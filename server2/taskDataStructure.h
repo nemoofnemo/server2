@@ -24,8 +24,8 @@
 #pragma comment(lib, "ws2_32.lib") 
 
 #define SRV_ERROR -1
-#define SRV_MAX_TASK_QUEUE_LENGTH 50
-#define SRV_MAX_TASK_QUEUE_NUM 6
+#define SRV_MAX_TASK_QUEUE_LENGTH 25
+#define SRV_MAX_TASK_QUEUE_NUM 10
 
 #define S_TASK_INI 2
 #define S_TASK_DONE 1

@@ -13,7 +13,7 @@
 ********************************************************************************/
 #include "taskDataStructure.h"
 #include "cmdFlag.h"
-#define BUF_SIZE 10240000
+#define BUF_SIZE 2048000
 
 /********************************************************************************
 **
@@ -191,7 +191,7 @@ int log_recv;
 int log_use;
 int log_throw;
 
-const int srv_max_thread = 20;
+const int srv_max_thread = 100;
 int srv_cur_thread = 0;
 
 //实现运行逻辑的线程
@@ -263,10 +263,8 @@ unsigned int __stdcall processTasks( LPVOID lpArg ){
 		for( int i = 0 ; i < taskQueueNum ; ++ i ){
 			taskManager.EnterSpecifyCriticalSection( i );
 			TaskQueue * ptr = taskManager.getSpecifyQueue(i);
-			if( ptr != NULL ){
-				if( ptr->getTaskNumber() > 0){
-					handleArr[i] = (HANDLE)_beginthreadex( NULL , 0 , taskThread , arr + i  , 0 ,NULL);		
-				}
+			if( ptr && ptr->getTaskNumber() > 0){
+				handleArr[i] = (HANDLE)_beginthreadex( NULL , 0 , taskThread , arr + i  , 0 ,NULL);		
 			}
 			taskManager.LeaveSpecifyCritialSection( i );
 			//CloseHandle(handleArr[i]);//need test
@@ -275,7 +273,7 @@ unsigned int __stdcall processTasks( LPVOID lpArg ){
 		//WaitForMultipleObjects( taskQueueNum , handleArr , true , INFINITE );
 		//LeaveCriticalSection( &taskManagerCriticalSection );
 		//wait 1 ms
-		//Sleep( 2 );
+		Sleep( 1 );
 	}
 	return 0;
 }
@@ -298,7 +296,7 @@ unsigned int __stdcall recvData( LPVOID lpArg ){
 	
 	int count = 0;
 	int num = 0;
-	int limit = 10 * BUF_SIZE;
+	int limit = 5 * BUF_SIZE;
 
 	char * data =  ( char *)malloc( sizeof(char) * limit);
 	char * pData = data;
