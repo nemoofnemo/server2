@@ -180,22 +180,32 @@ public:
 	}
 };
 
+/**********************************************************************************/
 //全局变量taksManager，负责管理任务
-TaskManager taskManager;	//warning:Enter critical section before use TaskManager's methods!!!
+TaskManager taskManager;	//warning:one program,one Taskmanager Obeject!!!
 //全局变量listener，负责监听
 transferModule listener;	//listener
+/**********************************************************************************/
 
-//数据统计
+/**********************************数据统计****************************************/
+//建立的连接数
 int log_connect;
+//接收数据包的个数
 int log_recv;
+//服务器处理的数据包个数
 int log_use;
+//服务器扔掉的数据包个数
 int log_throw;
+/**********************************************************************************/
 
+//接收数据线程的最大数量
 const int srv_max_thread = 100;
+//当前负责接收数据的线程的数量
 int srv_cur_thread = 0;
 
+/**********************************************************************************/
 //实现运行逻辑的线程
-unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
+unsigned int __stdcall taskThread( LPVOID lpArg ){
 	taskManager.EnterSpecifyCriticalSection( *((int*)lpArg) );
 	int arg = *((int*)lpArg);
 
@@ -222,18 +232,29 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
 	puts("[server]:task thread running");
 	//TODO
 	switch(cmdFlag){//need to change status filed in Task
-	case SENDTEXT:
+	case TAKEPIC:
+		//send cmd TAKEPIC to target
+
+		curQueue->pop_front();
+		break;
+	case SENDPIC:
+		//send picture data to ward
+
+		curQueue->pop_front();
+		break;
+	case SENDTEXT://debug
 		puts("[server]:msg");
 		listener.sendDataToListener( "a" ,2,curQueue->getCurTargetIP() , 6002);
 		curQueue->pop_front();
 		break;
-	case SRV_QUIT:
+	case SRV_QUIT://debug
 		curQueue->pop_front();
 		puts("[server]:quit.");
 		exit(0);
 		break;
 	default:
-		puts("[server]:ok");
+		puts("[server]:Invalid CMD flag.");
+		//return error message
 		curQueue->pop_front();
 		break;
 	}
@@ -245,7 +266,9 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
 	taskManager.LeaveSpecifyCritialSection( arg );
 	return 0;
 }
+/**********************************************************************************/
 
+/**********************************************************************************/
 //每隔一段时间检查taskManager中有没有需要执行的任务 
 unsigned int __stdcall processTasks( LPVOID lpArg ){
 	int taskQueueNum =0 ;
@@ -277,9 +300,9 @@ unsigned int __stdcall processTasks( LPVOID lpArg ){
 	}
 	return 0;
 }
+/**********************************************************************************/
 
-//===============================================
-
+/**********************************************************************************/
 //warning.this struct is the argument of thread recvData
 CRITICAL_SECTION recvThreadCS;
 struct recvDataArg{
@@ -319,6 +342,9 @@ unsigned int __stdcall recvData( LPVOID lpArg ){
 	closesocket(sock);
 
 	//TODO : need find by mac.check length.ip
+	//if mac frame is not exist in any taskQueue's key pair , throw;else add task to specify TaskQueue.
+	//if length is invalid . throw
+	//if ip is different from curTargetIp or curWardIp , update ip.
 	//judge
 	++ log_recv;
 	printf("[server]:recv data = %d\n" , count);
@@ -331,6 +357,7 @@ unsigned int __stdcall recvData( LPVOID lpArg ){
 	if( !curQueue->push_back(data, count , ip , ip)){
 		puts("[server]:specify task queue full");
 		++ log_throw ;
+		//server busy
 		//通知客户端重新发送
 	}else{
 		
@@ -343,8 +370,7 @@ unsigned int __stdcall recvData( LPVOID lpArg ){
 	-- srv_cur_thread ;
 	return 0;
 }
-
-//============================================
+/**********************************************************************************/
 
 class Server{
 public:
@@ -408,5 +434,6 @@ public:
 	}
 
 };
+/**********************************************************************************/
 
 #endif // !SERVER_H_
