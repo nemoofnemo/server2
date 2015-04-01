@@ -13,7 +13,7 @@
 ********************************************************************************/
 #include "taskDataStructure.h"
 #include "cmdFlag.h"
-#define BUF_SIZE 1024000
+#define BUF_SIZE 10240000
 
 /********************************************************************************
 **
@@ -191,17 +191,21 @@ int log_recv;
 int log_use;
 int log_throw;
 
+const int srv_max_thread = 20;
+int srv_cur_thread = 0;
+
 //实现运行逻辑的线程
-//该线程运行时当前队列的isVisting为true，改善线程结束时isVisiting设为false
 unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
-	EnterCriticalSection( & taskManagerCriticalSection );
+	taskManager.EnterSpecifyCriticalSection( *((int*)lpArg) );
 	int arg = *((int*)lpArg);
-	taskManager.EnterSpecifyCriticalSection( arg );
-	
-	//get task
-	TaskQueue * curQueue = taskManager.getSpecifyQueue(arg);
-	Task curTask =*( curQueue->getCurTask());
-	
+
+	TaskQueue * curQueue = taskManager.getSpecifyQueue( arg ) ;
+	if( curQueue->getTaskNumber() == 0 ){
+		taskManager.LeaveSpecifyCritialSection( arg );
+		return 0;
+	}
+
+	Task curTask = *(curQueue->getCurTask());
 	int length = curTask.length - 32;//!!
 	char * data = curTask.data;
 
@@ -218,73 +222,60 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
 	puts("[server]:task thread running");
 	//TODO
 	switch(cmdFlag){//need to change status filed in Task
-	case REGISTER://need test
-		puts("[server]:register");
-		targetMac = string( dataSection , dataSection + 7 );
-		if( targetMac.length() == 6 ){
-			if(taskManager.registerQueue( taskMac , targetMac)){
-				//register success
-			}
-			else{
-				//failed .task manager full
-			}
-		}
-		else{
-			//failed.invalid data
-		}
-		
-		taskManager.removeFirst( 0 );
-		break;
 	case SENDTEXT:
 		puts("[server]:msg");
-		listener.sendDataToListener( "a" ,2,taskManager.getSpecifyQueue(0)->getCurTargetIP() , 6002);
-		taskManager.removeFirst( 0 );
+		listener.sendDataToListener( "a" ,2,curQueue->getCurTargetIP() , 6002);
+		curQueue->pop_front();
 		break;
 	case SRV_QUIT:
-		taskManager.removeFirst( 0 );
+		curQueue->pop_front();
 		puts("[server]:quit.");
 		exit(0);
 		break;
 	default:
 		puts("[server]:ok");
-		taskManager.removeFirst( 0 );
+		curQueue->pop_front();
 		break;
 	}
 
 	++ log_use;
+	//taskManager.LeaveSpecifyCritialSection( arg );
+	printf("[server]:connection=%d,recv=%d,throw=%d,use=%d\n" , log_connect , log_recv , log_throw , log_use);
 	taskManager.LeaveSpecifyCritialSection( arg );
-	printf("[server]:connection=%d,recv=%d,throw+%d,use=%d\n" , log_connect , log_recv , log_throw , log_use);
-	LeaveCriticalSection( & taskManagerCriticalSection );
 	return 0;
 }
 
-//每隔一段时间检查taskManager中有没有需要执行的任务 10ms
+//每隔一段时间检查taskManager中有没有需要执行的任务 
 unsigned int __stdcall processTasks( LPVOID lpArg ){
-	int taskNum = 0;
+	//int taskNum = 0;
 	int taskQueueNum =0 ;
 	const int handleArrLen = taskManager.getMaxQueueNum();
-	int * arr = (int *)malloc(sizeof(int)*handleArrLen);
+	int * arr = ( int  * )malloc( sizeof(int) * handleArrLen );
 	HANDLE * handleArr = (HANDLE *)malloc( sizeof(HANDLE) * handleArrLen);
 
-	for( int k = 0 ; k < handleArrLen ; ++ k ){
-		arr[k] = k;
+	for( int i = 0 ; i < handleArrLen ; ++ i ){
+		arr[i] = i;
 	}
 
 	while( true ){
-		EnterCriticalSection( &taskManagerCriticalSection );
+		//EnterCriticalSection( &taskManagerCriticalSection );
 		taskQueueNum = taskManager.getTaskQueueNum();	
-		for( int i = 0 ; i < taskQueueNum ; ++ i ){		
+		for( int i = 0 ; i < taskQueueNum ; ++ i ){
+			taskManager.EnterSpecifyCriticalSection( i );
 			TaskQueue * ptr = taskManager.getSpecifyQueue(i);
-			taskNum = ptr->getTaskNumber();
-			if( taskNum > 0){
-				handleArr[i] = (HANDLE)_beginthreadex( NULL , 0 , taskThread , arr + i , 0 ,NULL);		//problem here
+			if( ptr != NULL ){
+				if( ptr->getTaskNumber() > 0){
+					handleArr[i] = (HANDLE)_beginthreadex( NULL , 0 , taskThread , arr + i  , 0 ,NULL);		
+				}
 			}
-			CloseHandle(handleArr[i]);//need test
+			taskManager.LeaveSpecifyCritialSection( i );
+			//CloseHandle(handleArr[i]);//need test
 		}
+		
 		//WaitForMultipleObjects( taskQueueNum , handleArr , true , INFINITE );
-		LeaveCriticalSection( &taskManagerCriticalSection );
+		//LeaveCriticalSection( &taskManagerCriticalSection );
 		//wait 1 ms
-		Sleep( 1 );
+		//Sleep( 2 );
 	}
 	return 0;
 }
@@ -300,6 +291,7 @@ struct recvDataArg{
 
 //接收数据的线程
 unsigned int __stdcall recvData( LPVOID lpArg ){
+	EnterCriticalSection( & taskManagerCriticalSection );
 	SOCKET sock = ((recvDataArg*)lpArg)->sock;
 	string ip(((recvDataArg*)lpArg)->ip);
 	LeaveCriticalSection( &recvThreadCS );
@@ -319,6 +311,8 @@ unsigned int __stdcall recvData( LPVOID lpArg ){
 			pData += num;
 		}
 		else{
+			-- srv_cur_thread ;
+			LeaveCriticalSection( & taskManagerCriticalSection );
 			return SRV_ERROR;
 		}
 		num = 0;
@@ -329,23 +323,26 @@ unsigned int __stdcall recvData( LPVOID lpArg ){
 	//TODO : need find by mac.check length.ip
 	//judge
 	++ log_recv;
-	printf("[server]:recv data = %d" , count);
+	printf("[server]:recv data = %d\n" , count);
 	/*for( int d = 0 ;d < count;d ++){
 		putchar( data[d]);
 	}*/
 	
-	EnterCriticalSection( &taskManagerCriticalSection );
-	if( !taskManager.addTask( 0 , data , count , ip.c_str() , ip.c_str() ) ){
+	taskManager.EnterSpecifyCriticalSection( 0 ) ;
+	TaskQueue * curQueue = taskManager.getSpecifyQueue(0);
+	if( !curQueue->push_back(data, count , ip , ip)){
 		puts("[server]:specify task queue full");
 		++ log_throw ;
 		//通知客户端重新发送
+	}else{
+		
 	}
-	LeaveCriticalSection( &taskManagerCriticalSection );
-
+	taskManager.LeaveSpecifyCritialSection( 0 );
+	LeaveCriticalSection( & taskManagerCriticalSection );
 	//release
 	free( data );
 	free( buffer );
-
+	-- srv_cur_thread ;
 	return 0;
 }
 
@@ -384,6 +381,7 @@ public:
 			EnterCriticalSection( &recvThreadCS );
 			if((arg.sock = listener.acceptClient()) == INVALID_SOCKET ){
 				puts("[server]:accept falied.");
+				LeaveCriticalSection( &recvThreadCS );
 				continue;
 			}
 			++ log_connect;
@@ -392,9 +390,18 @@ public:
 			
 			//启动新线程接收数据
 			if( arg.sock != INVALID_SOCKET ){
-				HANDLE h = (HANDLE)_beginthreadex( NULL , 0 , recvData , &arg , 0 , NULL );
-				puts("[server]:A new thread has been created.");
-				CloseHandle( h );//need test
+				if( srv_cur_thread < srv_max_thread ){
+					HANDLE h = (HANDLE)_beginthreadex( NULL , 0 , recvData , &arg , 0 , NULL );
+					++ srv_cur_thread;
+					puts("[server]:A new thread has been created.");
+				}
+				else{
+					puts("[server]:thread pool full.throw");
+					closesocket(arg.sock);
+					++ log_throw;
+					LeaveCriticalSection( &recvThreadCS );
+				}
+				//CloseHandle( h );//need test
 			}
 		}
 

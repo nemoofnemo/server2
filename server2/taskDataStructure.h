@@ -12,7 +12,7 @@
 **
 ********************************************************************************/
 
-#include "list.h"
+#include <list>
 #include <utility>
 #include <string>
 #include <iostream>
@@ -24,7 +24,7 @@
 #pragma comment(lib, "ws2_32.lib") 
 
 #define SRV_ERROR -1
-#define SRV_MAX_TASK_QUEUE_LENGTH 25
+#define SRV_MAX_TASK_QUEUE_LENGTH 50
 #define SRV_MAX_TASK_QUEUE_NUM 6
 
 #define S_TASK_INI 2
@@ -33,7 +33,7 @@
 
 using std::pair;
 using std::string;
-//using std::list;
+using std::list;
 using std::iterator;
 using std::cout;
 using std::endl;
@@ -119,6 +119,25 @@ public:
 			free(taskList.front().data);
 			taskList.pop_front();
 		}
+	}
+
+	bool push_back( Task arg , string ward = "NULL" , string target =  "NULL" ){
+		if( curTaskNumber > SRV_MAX_TASK_QUEUE_LENGTH ){
+			printf("[taskQueue]:error in taskQueue.pushBack:queue is full\n");
+			return false;
+		}
+
+		if( ward != curWardIP ){		
+			curWardIP = ward;
+		}
+
+		if( target != curTargetIP ){
+			curTargetIP = target;
+		}
+
+		taskList.push_back( arg );
+		++ curTaskNumber;
+		return true;
 	}
 
 	bool push_back( char * src , int length , string ward = "NULL" , string target =  "NULL" ){
@@ -285,6 +304,7 @@ public:
 		WSACleanup();
 	}
 
+	//problem here
 	bool registerQueue( string wardMac ,string targetMac){
 		if( curQueueNumber == SRV_MAX_TASK_QUEUE_NUM )
 			return false;
@@ -292,7 +312,7 @@ public:
 		for( int i = 0 ; i < curQueueNumber ; ++ i ){
 			EnterCriticalSection( taskQueueCriticalSections + i );
 			if( taskQueues[i].macExist(wardMac) || taskQueues[i].macExist( targetMac) ){
-				EnterCriticalSection( taskQueueCriticalSections + i );
+				LeaveCriticalSection( taskQueueCriticalSections + i );
 				return true;
 			}
 			LeaveCriticalSection( taskQueueCriticalSections + i );
@@ -306,50 +326,51 @@ public:
 		return true;
 	}
 
-	bool addTask(int index , char * src , int length , string ward = "NULL" , string target = "NULL"){
-		bool ret = true;
-		if( index < 0 ){
-			ret= false;
-		}
+	//todo
+	void removeQueue(){
 
-		if( src == NULL || length < 0 ){
-			ret=false;
-		}
-
-		if( ret == true ){
-			EnterCriticalSection( taskQueueCriticalSections + index );
-			ret = taskQueues[index].push_back( src , length , ward , target);
-			LeaveCriticalSection( taskQueueCriticalSections + index );
-		}
-		return ret;
 	}
 
-	bool removeFirst( int index ){
-		if( index < 0 ){
-			return false;
-		}
+	//bool addTask(int index , char * src , int length , string ward = "NULL" , string target = "NULL"){
+	//	//EnterCriticalSection( taskQueueCriticalSections + index );
+	//	bool ret = true;
+	//	if( index < 0 ){
+	//		ret= false;
+	//	}
 
-		if( taskQueues[index].getTaskNumber() == 0 ){
-			return false;
-		}
+	//	if( src == NULL || length < 0 ){
+	//		ret=false;
+	//	}
 
-		EnterCriticalSection( taskQueueCriticalSections + index );
-		taskQueues[index].pop_front();
-		LeaveCriticalSection( taskQueueCriticalSections + index );
+	//	if( ret == true ){	
+	//		ret = taskQueues[index].push_back( src , length , ward , target);
+	//	}
+	//	//LeaveCriticalSection( taskQueueCriticalSections + index );
+	//	return ret;
+	//}
 
-		return true;
-	}
+	//waring:thread will leave critical section after calling this function
+	//bool removeFirst( int index ){
+	//	if( index < 0 ){
+	//		return false;
+	//	}
+
+	//	//EnterCriticalSection( taskQueueCriticalSections + index );
+	//	if( taskQueues[index].getTaskNumber() == 0 ){
+	//		return false;
+	//	}
+	//	
+	//	taskQueues[index].pop_front();
+	//	return true;
+	//}
 
 	int findByMac( string mac ){
 		int ret = -1;
 		for( int i = 0 ; i < curQueueNumber ; ++ i ){
-			EnterCriticalSection( taskQueueCriticalSections + i );
 			if( taskQueues[i].macExist( mac ) ){
 				ret = i;
-				LeaveCriticalSection( taskQueueCriticalSections + i );
 				break;
 			}
-			LeaveCriticalSection( taskQueueCriticalSections + i );
 		}
 		return ret;	//cannot find -1.
 	}
@@ -359,6 +380,13 @@ public:
 		return ret;
 	}
 
+	//warning:thread should manage critical section after call this function!!!
+	/*Task * getSpecifyQueueFirstTask( int index ){
+		Task * ret = ( taskQueues[index].getCurTask() );
+		return ret;
+	}*/
+
+	//warning:thread should manage critical section after call this function
 	TaskQueue * getSpecifyQueue( int index ){
 		TaskQueue * ret = NULL;
 		if(index >= 0 && index < curQueueNumber ){
@@ -379,13 +407,12 @@ public:
 		return SRV_MAX_TASK_QUEUE_NUM;
 	}
 
+	//todo;problem here
 	void printAll( void ){
 		cout << "[taskManager]task queue number:" << curQueueNumber << endl;
 		for( int i = 0 ; i < curQueueNumber ; ++ i ){
-			EnterCriticalSection(taskQueueCriticalSections  + i );
 			cout  << "[taskQueue " << i << ']' <<endl;
 			taskQueues[i].printQueueInfo();
-			LeaveCriticalSection(taskQueueCriticalSections  + i );
 		}
 	}
 };
