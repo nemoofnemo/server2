@@ -248,7 +248,6 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
 
 //每隔一段时间检查taskManager中有没有需要执行的任务 
 unsigned int __stdcall processTasks( LPVOID lpArg ){
-	//int taskNum = 0;
 	int taskQueueNum =0 ;
 	const int handleArrLen = taskManager.getMaxQueueNum();
 	int * arr = ( int  * )malloc( sizeof(int) * handleArrLen );

@@ -249,8 +249,6 @@ public:
 	}
 };
 
-
-
 //critical section of taskmanager.initialise in taskmanager constructor.(global)
 CRITICAL_SECTION taskManagerCriticalSection;
 
@@ -261,16 +259,11 @@ CRITICAL_SECTION taskManagerCriticalSection;
 **Return  :
 **Detail  :任务管理器类。
 **         包含多个任务队列，processTasks线程每次循环可同时处理所有队列的第一个任务。
-**
 **         用taskQueues数组存放所有任务队列，数组的元素依次对应taskQueueCriticalSections数组中的元素。
 **         taskQueueCriticalSections的元素用来标识对应位置的队列是否正在被处理。
-**         taskmanager类中的每一个方法都要使用EnterCriticalSection函数和LeaveCriticalSection函数来确保每
-**	个队列在同一时间只有一个线程在访问。
-**
-**         调用taskManager的除析构函数和构造函数之外的任意方法时,需要在调用之前EnterCriticalSection,调
-**	用之后LeaveCriticalSection，以确保taskManager在同一时间只被唯一的线程操作。全局变量
-**	taskManagerCriticalSection为taskmanager的关键字段。每个进程最多只能有一个TaskManager的对象。
-**
+**         调用taskmanager类中的每一个方法都要对使用的任务队列使用EnterCriticalSection函数和LeaveCriticalSection函数来确保每
+**		   个队列在同一时间只有一个线程在访问。
+**         全局变量taskManagerCriticalSection为taskmanager的关键字段。每个进程最多只能有一个TaskManager的对象。
 **Author  :yuanyi
 **Date    :2015/3/31
 **
@@ -304,7 +297,7 @@ public:
 		WSACleanup();
 	}
 
-	//problem here
+	//todo:problem here
 	bool registerQueue( string wardMac ,string targetMac){
 		if( curQueueNumber == SRV_MAX_TASK_QUEUE_NUM )
 			return false;
@@ -331,39 +324,7 @@ public:
 
 	}
 
-	//bool addTask(int index , char * src , int length , string ward = "NULL" , string target = "NULL"){
-	//	//EnterCriticalSection( taskQueueCriticalSections + index );
-	//	bool ret = true;
-	//	if( index < 0 ){
-	//		ret= false;
-	//	}
-
-	//	if( src == NULL || length < 0 ){
-	//		ret=false;
-	//	}
-
-	//	if( ret == true ){	
-	//		ret = taskQueues[index].push_back( src , length , ward , target);
-	//	}
-	//	//LeaveCriticalSection( taskQueueCriticalSections + index );
-	//	return ret;
-	//}
-
-	//waring:thread will leave critical section after calling this function
-	//bool removeFirst( int index ){
-	//	if( index < 0 ){
-	//		return false;
-	//	}
-
-	//	//EnterCriticalSection( taskQueueCriticalSections + index );
-	//	if( taskQueues[index].getTaskNumber() == 0 ){
-	//		return false;
-	//	}
-	//	
-	//	taskQueues[index].pop_front();
-	//	return true;
-	//}
-
+	//todo
 	int findByMac( string mac ){
 		int ret = -1;
 		for( int i = 0 ; i < curQueueNumber ; ++ i ){
@@ -400,14 +361,6 @@ public:
 		return SRV_MAX_TASK_QUEUE_NUM;
 	}
 
-	//todo;problem here
-	/*void printAll( void ){
-		cout << "[taskManager]task queue number:" << curQueueNumber << endl;
-		for( int i = 0 ; i < curQueueNumber ; ++ i ){
-			cout  << "[taskQueue " << i << ']' <<endl;
-			taskQueues[i].printQueueInfo();
-		}
-	}*/
 };
 
 #endif // !TASK_H
