@@ -380,13 +380,6 @@ public:
 		return ret;
 	}
 
-	//warning:thread should manage critical section after call this function!!!
-	/*Task * getSpecifyQueueFirstTask( int index ){
-		Task * ret = ( taskQueues[index].getCurTask() );
-		return ret;
-	}*/
-
-	//warning:thread should manage critical section after call this function
 	TaskQueue * getSpecifyQueue( int index ){
 		TaskQueue * ret = NULL;
 		if(index >= 0 && index < curQueueNumber ){
@@ -408,13 +401,13 @@ public:
 	}
 
 	//todo;problem here
-	void printAll( void ){
+	/*void printAll( void ){
 		cout << "[taskManager]task queue number:" << curQueueNumber << endl;
 		for( int i = 0 ; i < curQueueNumber ; ++ i ){
 			cout  << "[taskQueue " << i << ']' <<endl;
 			taskQueues[i].printQueueInfo();
 		}
-	}
+	}*/
 };
 
 #endif // !TASK_H

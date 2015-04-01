@@ -241,6 +241,7 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){//should check length!!!!
 	++ log_use;
 	//taskManager.LeaveSpecifyCritialSection( arg );
 	printf("[server]:connection=%d,recv=%d,throw=%d,use=%d\n" , log_connect , log_recv , log_throw , log_use);
+	curQueue->printQueueInfo();
 	taskManager.LeaveSpecifyCritialSection( arg );
 	return 0;
 }
@@ -363,7 +364,7 @@ public:
 	void startListening( void ){
 		recvDataArg arg;
 		listener.startBind();
-		listener.prepareListen();
+		listener.prepareListen(25);
 
 		puts("[server]:server crital section created.");
 		if(InitializeCriticalSectionAndSpinCount(&recvThreadCS,4000) != TRUE){

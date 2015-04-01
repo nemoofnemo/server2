@@ -1,4 +1,4 @@
-﻿生成启动时间为 2015-04-01 08:40:06。
+﻿生成启动时间为 2015-04-01 09:00:19。
      1>项目“d:\Documents\Visual Studio 2012\Projects\server2\server2\server2.vcxproj”在节点 2 上(Build 个目标)。
      1>ClCompile:
          C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\bin\CL.exe /c /ZI /nologo /W3 /WX- /Od /Oy- /D WIN32 /D _DEBUG /D _CONSOLE /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Fo"Debug\\" /Fd"Debug\vc110.pdb" /Gd /TP /analyze- /errorReport:prompt main.cpp
@@ -11,4 +11,4 @@
 
 生成成功。
 
-已用时间 00:00:02.48
+已用时间 00:00:02.81
