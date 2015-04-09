@@ -1,9 +1,2 @@
 # server2
-Server Version2.
-This is the update version of server.
-Created by nemo with Visual Studio 2012 Update 4.
-
-///////////////////////////////////////////////////
-update 6:
-修复了线程管理的逻辑错误。
-提高并发线程数量，增加线程数量上限，提高了接收数据的速度。
+state 1.服务器框架基本完成，该程序至此不再对框架进行修改。程序使用关键段保证线程能安全读写数据。之后会在这个框架的基础上，将核心功能封装为类库，扩大该服务器的使用范围，并将源码更新到/server上。
