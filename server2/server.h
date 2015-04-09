@@ -14,6 +14,7 @@
 #include "taskDataStructure.h"
 #include "cmdFlag.h"
 #define BUF_SIZE 2048000
+#define LOOP_DELAY 10
 
 /********************************************************************************
 **
@@ -40,25 +41,7 @@ private:
 
 public:
 	//默认构造函数。默认服务器监听6000端口
-	transferModule(){
-		if ( WSAStartup( MAKEWORD( 2, 2 ), &wsaData ) != 0 ) {
-			exit(EXIT_FAILURE);
-		}
-
-		if ( LOBYTE( wsaData.wVersion ) != 2 ||	HIBYTE( wsaData.wVersion ) != 2 ){
-			WSACleanup();
-			exit(EXIT_FAILURE);
-		}
-
-		sockSrv = socket(AF_INET, SOCK_STREAM, 0);
-		// 将INADDR_ANY转换为网络字节序，调用 htonl(long型)或htons(整型)
-		addrSrv.sin_addr.S_un.S_addr = htonl(INADDR_ANY); 
-		addrSrv.sin_family = AF_INET;
-		addrSrv.sin_port = htons(6000);
-
-	}
-
-	transferModule(const int & port ){
+	transferModule(const int & port = 6000 ){
 		if ( WSAStartup( MAKEWORD( 2, 2 ), &wsaData ) != 0 ) {
 			exit(EXIT_FAILURE);
 		}
@@ -185,7 +168,6 @@ public:
 TaskManager taskManager;	//warning:one program,one Taskmanager Obeject!!!
 //全局变量listener，负责监听
 transferModule listener;	//listener
-/**********************************************************************************/
 
 /**********************************数据统计****************************************/
 //建立的连接数
@@ -203,22 +185,27 @@ const int srv_max_thread = 100;
 //当前负责接收数据的线程的数量
 int srv_cur_thread = 0;
 
-/**********************************************************************************/
 //实现运行逻辑的线程
 unsigned int __stdcall taskThread( LPVOID lpArg ){
 	taskManager.EnterSpecifyCriticalSection( *((int*)lpArg) );
 	int arg = *((int*)lpArg);
-
 	TaskQueue * curQueue = taskManager.getSpecifyQueue( arg ) ;
-	if( curQueue->getTaskNumber() == 0 ){
+
+	if(curQueue == NULL || curQueue->getTaskNumber() == 0 ){
 		taskManager.LeaveSpecifyCritialSection( arg );
 		return 0;
 	}
 
 	Task curTask = *(curQueue->getCurTask());
-	int length = curTask.length - 32;//!!
+	int length = curTask.length ;//!!
 	char * data = curTask.data;
 
+	if( length == 0 ){
+		taskManager.LeaveSpecifyCritialSection( arg );
+		return 0;
+	}
+
+	//.........................
 	char cmdFlag = *data;
 	char formatFlag = *(data+1);
 	char * dataSection = data;
@@ -230,7 +217,6 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){
 	}
 
 	puts("[server]:task thread running");
-	//TODO
 	switch(cmdFlag){//need to change status filed in Task
 	case TAKEPIC:
 		//send cmd TAKEPIC to target
@@ -266,7 +252,6 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){
 	taskManager.LeaveSpecifyCritialSection( arg );
 	return 0;
 }
-/**********************************************************************************/
 
 /**********************************************************************************/
 //每隔一段时间检查taskManager中有没有需要执行的任务 
@@ -295,12 +280,11 @@ unsigned int __stdcall processTasks( LPVOID lpArg ){
 		
 		//WaitForMultipleObjects( taskQueueNum , handleArr , true , INFINITE );
 		//LeaveCriticalSection( &taskManagerCriticalSection );
-		//wait 1 ms
-		Sleep( 1 );
+		//wait 
+		Sleep( LOOP_DELAY );
 	}
 	return 0;
 }
-/**********************************************************************************/
 
 /**********************************************************************************/
 //warning.this struct is the argument of thread recvData

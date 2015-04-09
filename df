@@ -1,0 +1,101 @@
+[33mcommit cabad083d04995fecea2bc24e73c161c7cb245cc[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Wed Apr 1 20:18:06 2015 +0800
+
+    update 9
+    
+    增加注释。
+
+[33mcommit 37c1ae5e0a43ffc412e451c6f541d05406f3a771[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Wed Apr 1 17:21:03 2015 +0800
+
+    update8
+    
+    修改部分注释
+
+[33mcommit 24c9f63d95c3c02589d455c705f0b1f2206007d9[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Wed Apr 1 13:06:10 2015 +0800
+
+    update7
+
+[33mcommit 93e61c5e3c92c3562254ef63241f82fbb681db87[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Wed Apr 1 09:10:15 2015 +0800
+
+    Update README.md
+
+[33mcommit dcbee80163c896ac0465dcf444f5db0243677036[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Wed Apr 1 09:05:07 2015 +0800
+
+    update6
+    
+    部分调整
+
+[33mcommit 27b27f64d689ac90912f8c32c256acc7d5f65292[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Wed Apr 1 08:47:07 2015 +0800
+
+    update5
+    
+    调整部分代码
+
+[33mcommit b9c9b2cbb9b8cc8822e511261bd2357c05137e4a[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Wed Apr 1 08:29:39 2015 +0800
+
+    update4
+    
+    对任务处理，任务检测和数据接收线程进行修改。调整了任务管理的运行逻辑。更改了任务管理器对任务队列处理方法。
+
+[33mcommit 4a991d30f78e12fe742530bbd14595446f81eaca[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Tue Mar 31 18:45:09 2015 +0800
+
+    update3
+    
+    添加任务管理类说明
+
+[33mcommit 963df29b7a6acafb3c4eefa11d342b1d4782f77c[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Tue Mar 31 18:21:07 2015 +0800
+
+    update2
+    
+    在指令处理模块添加部分功能。
+
+[33mcommit 6f1c4b1f7e3ae029ceb7772ba9bafd28844e3709[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Tue Mar 31 17:48:50 2015 +0800
+
+    Update README.md
+
+[33mcommit dac64b32dfa57e6d8d27c7e3db83041f5dc9e59b[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Tue Mar 31 17:38:20 2015 +0800
+
+    update
+    
+    update
+
+[33mcommit 335b767f191d3b4d396d5b9ebfe90f1ddda47f1e[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Tue Mar 31 12:34:23 2015 +0800
+
+    Create README.md
+
+[33mcommit 0dbf9da91fa1db2ee04ec3c6c797a86cf7ff998d[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Tue Mar 31 12:27:04 2015 +0800
+
+    server version2
+    
+    srv test
+
+[33mcommit c511a0d3ef955d93f9982269c161f6659bbab9ac[m
+Author: nemoofnemo <nemoofnemo@gmail.com>
+Date:   Tue Mar 31 12:26:06 2015 +0800
+
+    :tada: Added .gitattributes & .gitignore files

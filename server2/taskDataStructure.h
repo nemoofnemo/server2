@@ -14,6 +14,7 @@
 
 #include <list>
 #include <utility>
+#include <vector>
 #include <string>
 #include <iostream>
 #include <cstdlib>
@@ -27,20 +28,13 @@
 #define SRV_MAX_TASK_QUEUE_LENGTH 25
 #define SRV_MAX_TASK_QUEUE_NUM 10
 
-#define S_TASK_INI 2
-#define S_TASK_DONE 1
-#define S_TASK_STANDBY 0
-
 using std::pair;
+using std::vector;
 using std::string;
 using std::list;
 using std::iterator;
 using std::cout;
 using std::endl;
-
-#ifdef DEV_DEBUG
-
-#endif
 
 /********************************************************************************
 **
@@ -121,6 +115,13 @@ public:
 		}
 	}
 
+	void clear( void ){
+		while( !taskList.empty() ){
+			free(taskList.front().data);
+			taskList.pop_front();
+		}
+	}
+
 	bool push_back( Task arg , string ward = "NULL" , string target =  "NULL" ){
 		if( curTaskNumber > SRV_MAX_TASK_QUEUE_LENGTH ){
 			printf("[taskQueue]:error in taskQueue.pushBack:queue is full\n");
@@ -146,7 +147,7 @@ public:
 			return false;
 		}
 
-		if( curTaskNumber > SRV_MAX_TASK_QUEUE_LENGTH ){
+		if( curTaskNumber >= SRV_MAX_TASK_QUEUE_LENGTH ){
 			printf("error in taskQueue.pushBack:queue is full\n");
 			return false;
 		}
@@ -271,64 +272,97 @@ CRITICAL_SECTION taskManagerCriticalSection;
 class TaskManager{
 private:
 	int curQueueNumber;
-	TaskQueue taskQueues[SRV_MAX_TASK_QUEUE_NUM + 1];
-	CRITICAL_SECTION taskQueueCriticalSections[SRV_MAX_TASK_QUEUE_NUM + 1];
+	//TaskQueue taskQueues[SRV_MAX_TASK_QUEUE_NUM + 1];
+	//CRITICAL_SECTION taskQueueCriticalSections[SRV_MAX_TASK_QUEUE_NUM + 1];
+	vector< pair<TaskQueue,CRITICAL_SECTION> > taskQueues;
 public:
 	TaskManager(){
 		curQueueNumber = 0;
-		for( int i = 0 ; i < SRV_MAX_TASK_QUEUE_NUM ; ++ i ){
-			if( InitializeCriticalSectionAndSpinCount( taskQueueCriticalSections + i , 4096) != TRUE){
-				puts("[taskManager]:create cs failed.");
-				exit(EXIT_FAILURE);
-			}
-		}
-
 		if( InitializeCriticalSectionAndSpinCount( &taskManagerCriticalSection , 4096) != TRUE){
 			puts("[taskManager]:create global cs failed.");
 			exit(EXIT_FAILURE);
 		}
-
 	}
 
 	~TaskManager(){
-		for( int i = 0 ; i < SRV_MAX_TASK_QUEUE_NUM ; ++ i ){
-			DeleteCriticalSection( taskQueueCriticalSections + i );
+		DeleteCriticalSection( &taskManagerCriticalSection );
+		for( int i = 0 ; i < curQueueNumber ; ++ i ){
+			DeleteCriticalSection( &(taskQueues[i].second ) );
 		}
+
 		WSACleanup();
 	}
 
-	//todo:problem here
+	//need test
 	bool registerQueue( string wardMac ,string targetMac){
-		if( curQueueNumber == SRV_MAX_TASK_QUEUE_NUM )
+		int i = 0;
+		int count = -1;
+		CRITICAL_SECTION cs;
+		
+		if( curQueueNumber == SRV_MAX_TASK_QUEUE_NUM ){
 			return false;
-
-		for( int i = 0 ; i < curQueueNumber ; ++ i ){
-			EnterCriticalSection( taskQueueCriticalSections + i );
-			if( taskQueues[i].macExist(wardMac) || taskQueues[i].macExist( targetMac) ){
-				LeaveCriticalSection( taskQueueCriticalSections + i );
-				return true;
-			}
-			LeaveCriticalSection( taskQueueCriticalSections + i );
+		}
+		
+		for( i = 0; i < curQueueNumber ; ++ i ){
+			EnterCriticalSection( &(taskQueues[i].second) );
 		}
 
-		EnterCriticalSection( taskQueueCriticalSections + curQueueNumber);
-		taskQueues[curQueueNumber].setKey( pair<string,string>(wardMac,targetMac) );
-		LeaveCriticalSection( taskQueueCriticalSections + curQueueNumber );
-		curQueueNumber ++;
+		for( i = 0 ; i < curQueueNumber ; ++ i ){
+			if( taskQueues[i].first.macExist(wardMac) || taskQueues[i].first.macExist( targetMac ) ){
+				++ count;
+			}
+			LeaveCriticalSection( &(taskQueues[i].second) );
+		}
 
-		return true;
+		if( count == -1 ){
+			taskQueues.push_back( pair<TaskQueue,CRITICAL_SECTION>(TaskQueue( wardMac , targetMac ) , cs) );
+			InitializeCriticalSectionAndSpinCount( &( taskQueues.back().second ) , 4096 );
+			++ curQueueNumber ;
+			return true;
+		}
+		return false;
 	}
 
-	//todo
-	void removeQueue(){
+	//need test
+	bool removeQueue(string mac){
+		if( curQueueNumber == 0 ){
+			return false;
+		}
 
+		int i = 0;
+		int pos = -1;
+		CRITICAL_SECTION cs;
+
+		for( i = 0; i < curQueueNumber ; ++ i ){
+			EnterCriticalSection( &(taskQueues[i].second) );
+		}
+
+		for( i = 0 ; i < curQueueNumber ; ++ i ){
+			if( pos == -1 && taskQueues[i].first.macExist(mac) ){ 
+				pos = i;
+			}
+			LeaveCriticalSection( &(taskQueues[i].second) );
+		}
+
+		if( pos >= 0 && pos < curQueueNumber ){
+			cs = taskQueues[pos].second;
+			EnterCriticalSection( &cs );
+			taskQueues[pos].first.clear();
+			taskQueues.erase( taskQueues.begin() + pos );
+			LeaveCriticalSection( &cs );
+			DeleteCriticalSection( &cs );
+			curQueueNumber --;
+			return true;
+		}
+
+		return false;
 	}
 
-	//todo
+	//need test
 	int findByMac( string mac ){
 		int ret = -1;
 		for( int i = 0 ; i < curQueueNumber ; ++ i ){
-			if( taskQueues[i].macExist( mac ) ){
+			if( taskQueues[i].first.macExist( mac ) ){
 				ret = i;
 				break;
 			}
@@ -344,17 +378,19 @@ public:
 	TaskQueue * getSpecifyQueue( int index ){
 		TaskQueue * ret = NULL;
 		if(index >= 0 && index < curQueueNumber ){
-			ret = taskQueues + index;
+			ret = &(taskQueues[index].first);
 		}
 		return ret;
 	}
 
 	void EnterSpecifyCriticalSection( int index ){
-		EnterCriticalSection( taskQueueCriticalSections + index );
+		if( index < curQueueNumber && index >= 0 )
+			EnterCriticalSection( &(taskQueues[index].second) );
 	}
 
 	void LeaveSpecifyCritialSection( int index ){
-		LeaveCriticalSection( taskQueueCriticalSections + index );
+		if( index < curQueueNumber && index >= 0 )
+			LeaveCriticalSection( &(taskQueues[index].second) );
 	}
 
 	static int getMaxQueueNum(void ){
