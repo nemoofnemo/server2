@@ -2,18 +2,18 @@
 
 int main( void ){
 	Server srv;
-	puts("[main]:program start");
+	Log("[main]:program start\n");
 	
 	taskManager.registerQueue( "123456" , "qwerty" );
-	puts("[main]:test register success");
+	Log("[main]:test register success\n");
 
-	puts("[main]:processTask thread start");
+	Log("[main]:processTask thread start\n");
 	HANDLE h = (HANDLE)_beginthreadex( NULL , 0 , processTasks , NULL , 0 , NULL );
 	//WaitForSingleObject( h , INFINITE );
 	
-	puts("[main]:start server");
+	Log("[main]:start server\n");
 	srv.startListening();
 
-	puts("[main]:program end");
+	Log("[main]:program end\n");
 	return 0;
 }

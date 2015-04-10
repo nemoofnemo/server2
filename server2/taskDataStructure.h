@@ -1,16 +1,5 @@
 #ifndef TASK_H
 #define TASK_H
-#define DEV_DEBUG
-
-/********************************************************************************
-**
-**Function:数据结构定义文件
-**Detail  :定义任务的存储方式，操作。并对相关方法进行实现。
-**
-**Author  :袁羿
-**Date    :2015/3/29
-**
-********************************************************************************/
 
 #include <list>
 #include <utility>
@@ -23,9 +12,13 @@
 #include <Windows.h>
 
 #pragma comment(lib, "ws2_32.lib") 
+#define USE_LOG
+#ifdef USE_LOG
+#define Log(X,...) fprintf(stdout,(X),__VA_ARGS__)
+#endif
 
 #define SRV_ERROR -1
-#define SRV_MAX_TASK_QUEUE_LENGTH 25
+#define SRV_MAX_TASK_QUEUE_LENGTH 200
 #define SRV_MAX_TASK_QUEUE_NUM 10
 
 using std::pair;
@@ -36,54 +29,30 @@ using std::iterator;
 using std::cout;
 using std::endl;
 
-/********************************************************************************
-**
-**Function:任务存储结构定义及实现
-**Detail  :定义任务的存储结构。
-**         
-**         data 指向任务需要的数据
-**         
-**         length为数据长度
-**
-**Author  :袁羿
-**Date    :2015/3/28
-**
-********************************************************************************/
 class Task{
 public:
 	char * data;	//在TaskQueue的Push方法中分配内存，在pop内释放
 	int length;
-
+	bool visit;
 public:
 	Task( char * src , int length ){
 		data = src;
 		this->length = length;
+		visit = false;
 	}
 
 	Task(){
 		data = NULL;
 		length = 0;
+		visit = false;
 	}
 };
 
-/********************************************************************************
-**
-**Function:任务队列定义及实现
-**Detail  :实现任务队列的操作。
-**         curTaskNumber当前队列内任务数
-**         maxTaskNumber最大任务数
-**         key标识当前任务队列。通过该字段确定两台设备的连接。pair第一个字段为控制端mac地址，第二个字段为被控端mac地址。
-**         curWardIP保存当前控制端的ip
-**         curTargetIP保存当前被控端ip
-**
-**Author  :袁羿
-**Date    :2015/3/29
-**
-********************************************************************************/
 class TaskQueue{
 private:
 	int curTaskNumber;
 	int maxTaskNumber;
+	int visitedNumber;
 	pair<string,string> key;
 	list<Task> taskList;
 
@@ -92,6 +61,7 @@ private:
 public:
 	TaskQueue(){
 		curTaskNumber = 0;
+		visitedNumber = 0;
 		maxTaskNumber = SRV_MAX_TASK_QUEUE_LENGTH;
 		key.first = "NULL";
 		key.second = "NULL";
@@ -101,6 +71,7 @@ public:
 
 	TaskQueue(string wardMac , string targetMac , int maxNum = SRV_MAX_TASK_QUEUE_LENGTH){
 		curTaskNumber = 0;
+		visitedNumber = 0;
 		maxTaskNumber = SRV_MAX_TASK_QUEUE_LENGTH;
 		key.first = wardMac;
 		key.second = targetMac;
@@ -115,6 +86,19 @@ public:
 		}
 	}
 
+	void IncVisit( void ){
+		++visitedNumber ;
+	}
+
+	void DecVisit( void ){
+		if( visitedNumber > 0 )
+		 --visitedNumber ;
+	}
+
+	int getVisitedNum( void ){
+		return visitedNumber;
+	}
+
 	void clear( void ){
 		while( !taskList.empty() ){
 			free(taskList.front().data);
@@ -124,7 +108,7 @@ public:
 
 	bool push_back( Task arg , string ward = "NULL" , string target =  "NULL" ){
 		if( curTaskNumber > SRV_MAX_TASK_QUEUE_LENGTH ){
-			printf("[taskQueue]:error in taskQueue.pushBack:queue is full\n");
+			Log("[taskQueue]:error in taskQueue.pushBack:queue is full\n");
 			return false;
 		}
 
@@ -143,12 +127,12 @@ public:
 
 	bool push_back( char * src , int length , string ward = "NULL" , string target =  "NULL" ){
 		if( length < 0 || src == NULL ){
-			printf("error in taskQueue.pushBack\n");
+			Log("error in taskQueue.pushBack\n");
 			return false;
 		}
 
 		if( curTaskNumber >= SRV_MAX_TASK_QUEUE_LENGTH ){
-			printf("error in taskQueue.pushBack:queue is full\n");
+			Log("error in taskQueue.pushBack:queue is full\n");
 			return false;
 		}
 
@@ -178,7 +162,7 @@ public:
 			return true;
 		}
 		else{
-			printf("[taskQueue]:error in taskQueue.pop_front:queue is empty\n");
+			Log("[taskQueue]:error in taskQueue.pop_front:queue is empty\n");
 			return false;
 		}
 	}
@@ -221,7 +205,11 @@ public:
 	}
 
 	Task * getCurTask( void ){
-		return &(taskList.front());
+		if( curTaskNumber == 0 )
+			return NULL;
+		else{
+			return &(taskList.front());
+		}
 	}
 
 	bool isFull( void ){
@@ -252,34 +240,15 @@ public:
 
 //critical section of taskmanager.initialise in taskmanager constructor.(global)
 CRITICAL_SECTION taskManagerCriticalSection;
-
-/********************************************************************************
-**
-**Function:task manager
-**Args    :
-**Return  :
-**Detail  :任务管理器类。
-**         包含多个任务队列，processTasks线程每次循环可同时处理所有队列的第一个任务。
-**         用taskQueues数组存放所有任务队列，数组的元素依次对应taskQueueCriticalSections数组中的元素。
-**         taskQueueCriticalSections的元素用来标识对应位置的队列是否正在被处理。
-**         调用taskmanager类中的每一个方法都要对使用的任务队列使用EnterCriticalSection函数和LeaveCriticalSection函数来确保每
-**		   个队列在同一时间只有一个线程在访问。
-**         全局变量taskManagerCriticalSection为taskmanager的关键字段。每个进程最多只能有一个TaskManager的对象。
-**Author  :yuanyi
-**Date    :2015/3/31
-**
-********************************************************************************/
 class TaskManager{
 private:
 	int curQueueNumber;
-	//TaskQueue taskQueues[SRV_MAX_TASK_QUEUE_NUM + 1];
-	//CRITICAL_SECTION taskQueueCriticalSections[SRV_MAX_TASK_QUEUE_NUM + 1];
 	vector< pair<TaskQueue,CRITICAL_SECTION> > taskQueues;
 public:
 	TaskManager(){
 		curQueueNumber = 0;
 		if( InitializeCriticalSectionAndSpinCount( &taskManagerCriticalSection , 4096) != TRUE){
-			puts("[taskManager]:create global cs failed.");
+			Log("[taskManager]:create global cs failed.");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -293,7 +262,6 @@ public:
 		WSACleanup();
 	}
 
-	//need test
 	bool registerQueue( string wardMac ,string targetMac){
 		int i = 0;
 		int count = -1;
@@ -371,8 +339,7 @@ public:
 	}
 
 	int getTaskQueueNum( void ){
-		int ret = curQueueNumber;
-		return ret;
+		return curQueueNumber;
 	}
 
 	TaskQueue * getSpecifyQueue( int index ){
@@ -384,13 +351,11 @@ public:
 	}
 
 	void EnterSpecifyCriticalSection( int index ){
-		if( index < curQueueNumber && index >= 0 )
-			EnterCriticalSection( &(taskQueues[index].second) );
+		EnterCriticalSection( &(taskQueues[index].second) );
 	}
 
 	void LeaveSpecifyCritialSection( int index ){
-		if( index < curQueueNumber && index >= 0 )
-			LeaveCriticalSection( &(taskQueues[index].second) );
+		LeaveCriticalSection( &(taskQueues[index].second) );
 	}
 
 	static int getMaxQueueNum(void ){
