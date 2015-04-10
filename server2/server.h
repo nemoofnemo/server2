@@ -248,6 +248,7 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){
 	return 0;
 }
 
+CRITICAL_SECTION ptcs;
 //每隔一段时间检查taskManager中有没有需要执行的任务 
 unsigned int __stdcall processTasks( LPVOID lpArg ){
 	int taskQueueNum = 0 ;
@@ -256,10 +257,16 @@ unsigned int __stdcall processTasks( LPVOID lpArg ){
 	Task * pTask = NULL;
 	const int handleArrLen = taskManager.getMaxQueueNum();
 
+	if( !InitializeCriticalSectionAndSpinCount( &ptcs ,4096) ){
+		Log("[server]:ptcs error\n");
+		exit(EXIT_FAILURE );
+	}
+
 	while( true ){
 		taskQueueNum = taskManager.getTaskQueueNum();	
 		for( int i = 0 ; i < taskQueueNum ; ++ i ){
 			taskManager.EnterSpecifyCriticalSection( i );
+			EnterCriticalSection( &ptcs );
 			TaskQueue * ptr = taskManager.getSpecifyQueue(i);
 			if( ptr != NULL ){
 				d = 0;
@@ -273,15 +280,17 @@ unsigned int __stdcall processTasks( LPVOID lpArg ){
 					++d;
 				}
 			}
+			LeaveCriticalSection( &ptcs );
 			taskManager.LeaveSpecifyCritialSection( i );
 		}
 		//wait 
 		//Sleep( LOOP_DELAY );
 	}
+	DeleteCriticalSection( &ptcs );
 	return 0;
 }
 
-/**********************************************************************************/
+
 CRITICAL_SECTION recvThreadCS;
 struct recvDataArg{
 	SOCKET sock;	//socket that need to call function recv
@@ -290,7 +299,6 @@ struct recvDataArg{
 
 //接收数据的线程
 unsigned int __stdcall recvData( LPVOID lpArg ){
-	Sleep(1);
 	SOCKET sock = ((recvDataArg*)lpArg)->sock;
 	string ip(((recvDataArg*)lpArg)->ip);
 	LeaveCriticalSection( &recvThreadCS );
@@ -347,7 +355,53 @@ unsigned int __stdcall recvData( LPVOID lpArg ){
 	return 0;
 }
 
-/**********************************************************************************/
+
+unsigned int __stdcall startListening( LPVOID lpArg ){
+	recvDataArg arg;
+	listener.startBind();
+	listener.prepareListen(30);
+
+	Log("[server]:server crital section created.\n");
+	if(InitializeCriticalSectionAndSpinCount(&recvThreadCS,4096) != TRUE){
+		exit(EXIT_FAILURE);
+	}
+
+	Log("[server]:start.\n");
+	//监听的主循环
+	while( true ){
+		Log("[server]:listening.\n");
+		Log("[server]:connection=%d,recv=%d,throw=%d,use=%d,dump=%d,invalid=%d\n" , log_connect , log_recv , log_throw , log_use , log_dump,log_invalid);
+
+		if((arg.sock = listener.acceptClient()) == INVALID_SOCKET ){
+			Log("[server]:accept falied.\n");
+			continue;
+		}
+		++ log_connect;
+		strcpy( arg.ip , listener.getClientIp() );
+
+		//启动新线程接收数据
+		HANDLE h = INVALID_HANDLE_VALUE;
+		if( arg.sock != INVALID_SOCKET ){
+			if( srv_cur_thread < srv_max_thread ){
+				//保证参数的互斥访问.在thread recvData中leave
+				EnterCriticalSection( &recvThreadCS );
+				h = (HANDLE)_beginthreadex( NULL , 0 , recvData , &arg , 0 , NULL );
+				++ srv_cur_thread;
+				Log("[server]:A new thread has been created.\n");
+			}
+			else{
+				Log("[server]:thread pool full.throw.\n");
+				closesocket(arg.sock);
+				++ log_throw;
+				Sleep(1);
+			}
+			CloseHandle( h );
+		}
+	}
+
+	DeleteCriticalSection(&recvThreadCS );
+	Log("[server]:stop.\n");
+}
 
 class Server{
 public:
@@ -366,53 +420,8 @@ public:
 		return ret;
 	}
 
-	void startListening( void ){
-		recvDataArg arg;
-		listener.startBind();
-		listener.prepareListen(50);
-
-		Log("[server]:server crital section created.\n");
-		if(InitializeCriticalSectionAndSpinCount(&recvThreadCS,4000) != TRUE){
-			exit(EXIT_FAILURE);
-		}
-		
-		Log("[server]:start.\n");
-		//监听的主循环
-		while( true ){
-			Log("[server]:listening.\n");
-			Log("[server]:connection=%d,recv=%d,throw=%d,use=%d,dump=%d,invalid=%d\n" , log_connect , log_recv , log_throw , log_use , log_dump,log_invalid);
-			
-			//保证参数的互斥访问.在thread recvData中leave
-			EnterCriticalSection( &recvThreadCS );
-			if((arg.sock = listener.acceptClient()) == INVALID_SOCKET ){
-				Log("[server]:accept falied.\n");
-				LeaveCriticalSection( &recvThreadCS );
-				continue;
-			}
-			++ log_connect;
-			strcpy( arg.ip , listener.getClientIp() );
-			
-			//启动新线程接收数据
-			HANDLE h = INVALID_HANDLE_VALUE;
-			if( arg.sock != INVALID_SOCKET ){
-				if( srv_cur_thread < srv_max_thread ){
-					h = (HANDLE)_beginthreadex( NULL , 0 , recvData , &arg , 0 , NULL );
-					++ srv_cur_thread;
-					Log("[server]:A new thread has been created.\n");
-				}
-				else{
-					Log("[server]:thread pool full.throw.\n");
-					closesocket(arg.sock);
-					++ log_throw;
-					Sleep(1);
-					LeaveCriticalSection( &recvThreadCS );
-				}
-				CloseHandle( h );
-			}
-		}
-
-		DeleteCriticalSection(&recvThreadCS );
-		Log("[server]:stop.\n");
+	void start( void ){
+		CloseHandle((HANDLE)_beginthreadex( NULL , 0 , startListening ,NULL ,0,NULL));
 	}
 
 };

@@ -12,8 +12,8 @@ int main( void ){
 	//WaitForSingleObject( h , INFINITE );
 	
 	Log("[main]:start server\n");
-	srv.startListening();
-
+	HANDLE hserver = (HANDLE)_beginthreadex( NULL , 0 , startListening ,NULL ,0,NULL);
+	WaitForSingleObject( hserver , INFINITE );
 	Log("[main]:program end\n");
 	return 0;
 }
