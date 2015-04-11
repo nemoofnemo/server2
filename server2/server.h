@@ -3,8 +3,8 @@
 
 #include "taskDataStructure.h"
 #include "cmdFlag.h"
-#define BUF_SIZE 2048000
-#define LOOP_DELAY 1
+#define BUF_SIZE 1024000
+#define v_type(X,Y) pair<pair<string,string>,pair<string,string>>((X),(Y))
 
 class transferModule{
 private:
@@ -48,6 +48,14 @@ public:
 		}
 		int val = atoi( temp );
 		return val == length;
+	}
+
+	static int getLength( const char * data ){
+		char temp[16] = {0};
+		for( int i = 2 ; i < 10 ; ++ i ){
+			temp[i-2] = data[i];
+		}
+		return atoi( temp );
 	}
 
 	//waring:this function will release all socket connections
@@ -156,52 +164,90 @@ public:
 /**********************************************************************************/
 //全局变量taksManager，负责管理任务
 TaskManager taskManager;	//warning:one program,one Taskmanager Obeject!!!
+transferModule listener;
+vector< pair<pair<string,string>,pair<string,string> > > mac_ip;
+CRITICAL_SECTION mics;
 
-//实现运行逻辑的线程
 unsigned int __stdcall taskThread( LPVOID lpArg ){
-	taskManager.EnterSpecifyCriticalSection( (int)lpArg );
-	int arg = (int)lpArg;
-	TaskQueue * curQueue = taskManager.getSpecifyQueue( arg ) ;
-
-	if(curQueue == NULL ){
-		taskManager.LeaveSpecifyCritialSection( arg );
-		return 0;
-	}
-
-	Task * pTask = curQueue->getCurTask();
-	if( pTask == NULL ){
-		taskManager.LeaveSpecifyCritialSection( arg );
-		return 0;
-	}
-
-	int length = pTask->length ;//!!
-	if( length == 0 || pTask->data == NULL ){
-		curQueue->pop_front();
-		taskManager.LeaveSpecifyCritialSection( arg );
-		return 0;
-	}
-
-
-	char * data = (char *)malloc(sizeof(char)*pTask->length);
-	memcpy( data , pTask->data , length );
-	curQueue->pop_front();
-	taskManager.LeaveSpecifyCritialSection( arg );
-
-	//.........................
+	char * data = (char*)lpArg;
 	char cmdFlag = *data;
 	char formatFlag = *(data+1);
 	char * dataSection = data;
 	int dataSectionLen = 0;
-	string taskMac( data + 10 , data + 16 );
-	string targetMac;
+	int length = listener.getLength(data);
 
-	if( length > 32 && data != NULL){
+	string taskMac( data + 10 , data + 22 );
+	string taskIP( data + length , data + length + 16 );
+	string targetMac;
+	string wardMac;
+	string targetIP;
+	string wardIP;
+
+	if( data != NULL){
 		dataSection += 32;
 		dataSectionLen = length - 32;
 	}
 
+	int loc = -1;
+	int pos = -1;
+	for( int i = 0 ; i < (int)mac_ip.size() ; ++ i ){
+		if(mac_ip[i].first.first == taskMac  ){
+			pos = i;
+			loc = 1;
+			break;
+		}
+		if( mac_ip[i].second.first == taskMac ){
+			pos = i;
+			loc = 2;
+			break;
+		}
+	}
+
+	EnterCriticalSection( &mics );
+	if( loc == 1 ){
+		wardMac = taskMac;
+		wardIP = taskIP;
+		if( mac_ip[pos].first.second != taskIP ){
+			mac_ip[pos].first.second = taskIP;
+		}
+	}else if(loc == 2){
+		targetMac = taskMac;
+		targetIP = taskIP;
+		if( mac_ip[pos].second.second != taskIP ){
+			mac_ip[pos].second.second = taskIP;
+		}
+	}
+	LeaveCriticalSection( &mics );
+
 	Log("[server]:task thread.\n");
 	switch(cmdFlag){
+	case TAKEPIC:
+		listener.sendDataToListener( data , length , targetIP  ,6002);
+		break;
+	case SENDPIC:
+		listener.sendDataToListener( data , length , wardIP , 6002 );
+		break;
+	case GETLOCATION:
+		if( length == 32 )
+			listener.sendDataToListener( data , length , wardIP , 6002 );
+		else if( length > 32 ){
+			///
+		}
+		break;
+	case WIFI_SIG:
+		if( length == 32 ){
+			listener.sendDataToListener( data , length , targetIP , 6002 );
+		}
+		else if( length > 32 ){
+			//get wifi
+		}
+		break;
+	case GPS_SIG:
+		listener.sendDataToListener( data , length , targetIP , 6002 );
+		break;
+	case SENDLOCATION:
+		//
+		break;
 	case SRV_QUIT://debug
 		Log("[server]:quit.\n");
 		exit(0);
@@ -214,57 +260,31 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){
 		putchar('\n');*/
 		++ log_dump;
 		break;
+	case REGISTER:
+		EnterCriticalSection( &mics );
+		targetMac = string(dataSection , dataSection + 12);
+		if( pos == - 1 ){
+			mac_ip.push_back( 
+				pair<pair<string,string>,pair<string,string>>
+					(pair<string,string>(taskMac,taskIP),pair<string,string>(targetMac,"NULL")) );
+		}
+		EnterCriticalSection( &mics );
+		break;
 	default:
 		Log("[server]:Invalid CMD flag = %x\n",cmdFlag);
 		log_invalid ++;
 		//return error message
-		
+
 		break;
 	}
 
-	
+	free( data );
 	++ log_use;
 	Log("[server]:connection=%d,recv=%d,throw=%d,use=%d,dump=%d,invalid=%d\n" , log_connect , log_recv , log_throw , log_use , log_dump,log_invalid);
 	
+
 	return 0;
 }
-
-//每隔一段时间检查taskManager中有没有需要执行的任务 
-unsigned int __stdcall processTasks( LPVOID lpArg ){
-	int taskQueueNum = 0 ;
-	int d= 0;
-	int taskNum = 0;
-	Task * pTask = NULL;
-	TaskQueue * ptr = NULL;
-
-	while( true ){
-
-		taskQueueNum = taskManager.getTaskQueueNum();	
-		for( int i = 0 ; i < taskQueueNum ; ++ i ){
-			taskManager.EnterSpecifyCriticalSection( i );
-			ptr = taskManager.getSpecifyQueue(i);
-			if( ptr != NULL ){
-				d = 0;
-				taskNum = ptr->getTaskNumber();
-				if( taskNum > 64 )
-					taskNum >>= 2;
-				while( d < taskNum ){
-					if( (pTask = ptr->getCurTask())->visit == 0 ){
-						HANDLE h = (HANDLE)_beginthreadex( NULL , 0 , taskThread , (void *)i , 0 ,NULL);
-						pTask->visit = 1;
-						CloseHandle(h);
-					}
-					++d;
-				}
-			}
-			taskManager.LeaveSpecifyCritialSection( i );
-		}
-
-		Sleep( LOOP_DELAY );
-	}
-	return 0;
-}
-
 
 unsigned int __stdcall listenThread( LPVOID lpArg ){
 	WSADATA wsaData;
@@ -280,9 +300,9 @@ unsigned int __stdcall listenThread( LPVOID lpArg ){
 	int num = 0;
 	int limit = 2 * BUF_SIZE;
 
-	char * data =  ( char *)malloc( sizeof(char) * limit);
+	char * data = NULL;
 	char * pData = data;
-	char * buffer = ( char *)malloc( sizeof(char) * BUF_SIZE );
+	char * buffer = NULL;
 
 	if ( WSAStartup( MAKEWORD( 2, 2 ), &wsaData ) != 0 ) {
 		exit(EXIT_FAILURE);
@@ -302,18 +322,19 @@ unsigned int __stdcall listenThread( LPVOID lpArg ){
 	int opt=1;
 	setsockopt(sockSrv,SOL_SOCKET,SO_REUSEADDR,(char *)&opt,sizeof(opt));
 	bind( sockSrv , (SOCKADDR*)&addrSrv, sizeof(SOCKADDR));
-	listen( sockSrv , 256);
-	//Log("[listenThread]:start %d.\n" , arg );
+	listen( sockSrv , 512);
 
 	while( true ){
 		sockClient = accept(sockSrv, (SOCKADDR*)&addrClient, &len);
 		log_connect ++;
 
-		num = 0;
-		count = 0;
-		Sleep(LOOP_DELAY);
-
 		if( sockClient != INVALID_SOCKET ){
+			num = 0;
+			count = 0;
+			data =  ( char *)malloc( sizeof(char) * limit + 20);
+			buffer = ( char *)malloc( sizeof(char) * BUF_SIZE );
+			pData = data;
+
 			while( (num = recv( sockClient , buffer , BUF_SIZE , 0 ) ) > 0 ){
 				count += num;
 				if( count < limit ){
@@ -326,43 +347,28 @@ unsigned int __stdcall listenThread( LPVOID lpArg ){
 				num = 0;
 			}
 
+			free(buffer);
 			++ log_recv;
 			Log("[server]:listen thread=%d,recv data = %d\n" , arg ,count);
-
-			EnterCriticalSection(&taskManagerCriticalSection);
-			taskManager.EnterSpecifyCriticalSection( arg ) ;
-			TaskQueue * curQueue = taskManager.getSpecifyQueue(arg);
-			bool ret = curQueue->push_back(data, count , arg , ip , ip);
-			int y = 0;
-			taskManager.LeaveSpecifyCritialSection( arg );
-
-			if( ret == false ){
-				for( int i = 0 ; i < 4 ; ++ i ){
-					taskManager.EnterSpecifyCriticalSection( i );
-					curQueue = taskManager.getSpecifyQueue( i );
-					if(curQueue&&(!curQueue->isFull())){
-						curQueue->push_back( data , count, i, ip , ip );
-						y ++;
-						break;
-					}
-					taskManager.LeaveSpecifyCritialSection(i);
-				}
-
-				if( y == 0 ){
-					Log("[server]:all task queue full\n");
-					++ log_throw ;
-				}
-				//server busy
-				//通知客户端重新发送
+			/*for( int i = 0 ; i < count ; ++ i ){
+				putchar(data[i] );
 			}
-			
-			LeaveCriticalSection(&taskManagerCriticalSection);
+			*/
+
+			if( count < 32 || listener.checkLength(data,count) == false){
+				closesocket( sockClient );
+				continue;
+			}
+
+			Log("[server]:start new task thread.\n");
+			char * ip = inet_ntoa(addrClient.sin_addr);
+			memcpy( data + count , ip , strlen( ip ) + 1 );
+			HANDLE h = (HANDLE)_beginthreadex( NULL , 0 , taskThread , data , 0 , NULL );
+			CloseHandle( h );
 			closesocket( sockClient );
 		}
 	}
 
-	free( data );
-	free( buffer );
 	return 0;
 }
 
