@@ -18,7 +18,7 @@
 #endif
 
 #define SRV_ERROR -1
-#define SRV_MAX_TASK_QUEUE_LENGTH 1024
+#define SRV_MAX_TASK_QUEUE_LENGTH 256
 #define SRV_MAX_TASK_QUEUE_NUM 32
 
 /**********************************数据统计****************************************/
