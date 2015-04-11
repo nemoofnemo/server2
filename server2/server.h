@@ -156,26 +156,6 @@ public:
 /**********************************************************************************/
 //全局变量taksManager，负责管理任务
 TaskManager taskManager;	//warning:one program,one Taskmanager Obeject!!!
-//全局变量listener，负责监听
-transferModule listener;	//listener
-
-/**********************************数据统计****************************************/
-//建立的连接数
-int log_connect;
-//接收数据包的个数
-int log_recv;
-//服务器处理的数据包个数
-int log_use;
-//服务器扔掉的数据包个数
-int log_throw;
-//dump
-int log_dump;
-//invalid
-int log_invalid;
-//接收数据线程的最大数量
-const int srv_max_thread = 150;
-//当前负责接收数据的线程的数量
-int srv_cur_thread = 0;
 
 //实现运行逻辑的线程
 unsigned int __stdcall taskThread( LPVOID lpArg ){
@@ -201,9 +181,9 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){
 		return 0;
 	}
 
-	char * data = (char *)malloc(sizeof(char)*length);
+
+	char * data = (char *)malloc(sizeof(char)*pTask->length);
 	memcpy( data , pTask->data , length );
-	
 	curQueue->pop_front();
 	taskManager.LeaveSpecifyCritialSection( arg );
 
@@ -228,10 +208,10 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){
 		break;
 	case DUMP:
 		Log("[server]:dump.\n");
-		for( int i = 0 ; i < dataSectionLen ; ++ i ){
+		/*for( int i = 0 ; i < dataSectionLen ; ++ i ){
 			putchar(*(dataSection + i ));
 		}
-		putchar('\n');
+		putchar('\n');*/
 		++ log_dump;
 		break;
 	default:
@@ -242,67 +222,60 @@ unsigned int __stdcall taskThread( LPVOID lpArg ){
 		break;
 	}
 
-	free( data );
+	
 	++ log_use;
 	Log("[server]:connection=%d,recv=%d,throw=%d,use=%d,dump=%d,invalid=%d\n" , log_connect , log_recv , log_throw , log_use , log_dump,log_invalid);
+	
 	return 0;
 }
 
-CRITICAL_SECTION ptcs;
 //每隔一段时间检查taskManager中有没有需要执行的任务 
 unsigned int __stdcall processTasks( LPVOID lpArg ){
 	int taskQueueNum = 0 ;
 	int d= 0;
 	int taskNum = 0;
 	Task * pTask = NULL;
-	const int handleArrLen = taskManager.getMaxQueueNum();
-
-	if( !InitializeCriticalSectionAndSpinCount( &ptcs ,4096) ){
-		Log("[server]:ptcs error\n");
-		exit(EXIT_FAILURE );
-	}
+	TaskQueue * ptr = NULL;
 
 	while( true ){
+
 		taskQueueNum = taskManager.getTaskQueueNum();	
 		for( int i = 0 ; i < taskQueueNum ; ++ i ){
 			taskManager.EnterSpecifyCriticalSection( i );
-			EnterCriticalSection( &ptcs );
-			TaskQueue * ptr = taskManager.getSpecifyQueue(i);
+			ptr = taskManager.getSpecifyQueue(i);
 			if( ptr != NULL ){
 				d = 0;
 				taskNum = ptr->getTaskNumber();
+				if( taskNum > 64 )
+					taskNum >>= 2;
 				while( d < taskNum ){
-					if( (pTask = ptr->getCurTask())->visit == false ){
-						HANDLE h = (HANDLE)_beginthreadex( NULL , 0 , taskThread , (void *)i  , 0 ,NULL);
-						pTask->visit = true;
+					if( (pTask = ptr->getCurTask())->visit == 0 ){
+						HANDLE h = (HANDLE)_beginthreadex( NULL , 0 , taskThread , (void *)i , 0 ,NULL);
+						pTask->visit = 1;
 						CloseHandle(h);
 					}
 					++d;
 				}
 			}
-			LeaveCriticalSection( &ptcs );
 			taskManager.LeaveSpecifyCritialSection( i );
 		}
-		//wait 
-		//Sleep( LOOP_DELAY );
+
+		Sleep( LOOP_DELAY );
 	}
-	DeleteCriticalSection( &ptcs );
 	return 0;
 }
 
 
-CRITICAL_SECTION recvThreadCS;
-struct recvDataArg{
-	SOCKET sock;	//socket that need to call function recv
-	char ip[16];	//ip of socket
-};
+unsigned int __stdcall listenThread( LPVOID lpArg ){
+	WSADATA wsaData;
+	SOCKET sockSrv;	//服务器SOCKET
+	SOCKET sockClient;
+	SOCKADDR_IN addrSrv;
+	SOCKADDR_IN addrClient;
+	string ip;
 
-//接收数据的线程
-unsigned int __stdcall recvData( LPVOID lpArg ){
-	SOCKET sock = ((recvDataArg*)lpArg)->sock;
-	string ip(((recvDataArg*)lpArg)->ip);
-	LeaveCriticalSection( &recvThreadCS );
-
+	int arg = (int)lpArg;
+	int len = sizeof(SOCKADDR);
 	int count = 0;
 	int num = 0;
 	int limit = 2 * BUF_SIZE;
@@ -311,119 +284,86 @@ unsigned int __stdcall recvData( LPVOID lpArg ){
 	char * pData = data;
 	char * buffer = ( char *)malloc( sizeof(char) * BUF_SIZE );
 
-	while( (num = recv( sock , buffer , BUF_SIZE , 0 ) ) > 0 ){
-		count += num;
-		if( count < limit ){
-			memcpy( pData , buffer , num );
-			pData += num;
-		}
-		else{
-			-- srv_cur_thread ;
-			return SRV_ERROR;
-		}
-		num = 0;
-	}
-	closesocket(sock);
-
-	//TODO : need find by mac.check length.ip
-	//if mac frame is not exist in any taskQueue's key pair , throw;else add task to specify TaskQueue.
-	//if length is invalid . throw
-	//if ip is different from curTargetIp or curWardIp , update ip.
-	//judge
-	++ log_recv;
-	Log("[server]:recv data = %d\n" , count);
-
-	EnterCriticalSection( & taskManagerCriticalSection );
-	taskManager.EnterSpecifyCriticalSection( 0 ) ;
-	TaskQueue * curQueue = taskManager.getSpecifyQueue(0);
-	if( !curQueue->push_back(data, count , ip , ip)){
-		Log("[server]:specify task queue full\n");
-		++ log_throw ;
-		//server busy
-		//通知客户端重新发送
-	}else{
-		
-	}
-
-	taskManager.LeaveSpecifyCritialSection( 0 );
-	LeaveCriticalSection( & taskManagerCriticalSection );
-	//release
-	free( data );
-	free( buffer );
-	-- srv_cur_thread ;
-	
-	return 0;
-}
-
-
-unsigned int __stdcall startListening( LPVOID lpArg ){
-	recvDataArg arg;
-	listener.startBind();
-	listener.prepareListen(30);
-
-	Log("[server]:server crital section created.\n");
-	if(InitializeCriticalSectionAndSpinCount(&recvThreadCS,4096) != TRUE){
+	if ( WSAStartup( MAKEWORD( 2, 2 ), &wsaData ) != 0 ) {
 		exit(EXIT_FAILURE);
 	}
 
-	Log("[server]:start.\n");
-	//监听的主循环
+	if ( LOBYTE( wsaData.wVersion ) != 2 ||	HIBYTE( wsaData.wVersion ) != 2 ){
+		WSACleanup( );
+		exit(EXIT_FAILURE);
+	}
+
+	sockSrv = socket(AF_INET, SOCK_STREAM, 0);
+	// 将INADDR_ANY转换为网络字节序，调用 htonl(long型)或htons(整型)
+	addrSrv.sin_addr.S_un.S_addr = htonl(INADDR_ANY); 
+	addrSrv.sin_family = AF_INET;
+	addrSrv.sin_port = htons(6000);
+
+	int opt=1;
+	setsockopt(sockSrv,SOL_SOCKET,SO_REUSEADDR,(char *)&opt,sizeof(opt));
+	bind( sockSrv , (SOCKADDR*)&addrSrv, sizeof(SOCKADDR));
+	listen( sockSrv , 256);
+	//Log("[listenThread]:start %d.\n" , arg );
+
 	while( true ){
-		Log("[server]:listening.\n");
-		Log("[server]:connection=%d,recv=%d,throw=%d,use=%d,dump=%d,invalid=%d\n" , log_connect , log_recv , log_throw , log_use , log_dump,log_invalid);
+		sockClient = accept(sockSrv, (SOCKADDR*)&addrClient, &len);
+		log_connect ++;
 
-		if((arg.sock = listener.acceptClient()) == INVALID_SOCKET ){
-			Log("[server]:accept falied.\n");
-			continue;
-		}
-		++ log_connect;
-		strcpy( arg.ip , listener.getClientIp() );
+		num = 0;
+		count = 0;
+		Sleep(LOOP_DELAY);
 
-		//启动新线程接收数据
-		HANDLE h = INVALID_HANDLE_VALUE;
-		if( arg.sock != INVALID_SOCKET ){
-			if( srv_cur_thread < srv_max_thread ){
-				//保证参数的互斥访问.在thread recvData中leave
-				EnterCriticalSection( &recvThreadCS );
-				h = (HANDLE)_beginthreadex( NULL , 0 , recvData , &arg , 0 , NULL );
-				++ srv_cur_thread;
-				Log("[server]:A new thread has been created.\n");
+		if( sockClient != INVALID_SOCKET ){
+			while( (num = recv( sockClient , buffer , BUF_SIZE , 0 ) ) > 0 ){
+				count += num;
+				if( count < limit ){
+					memcpy( pData , buffer , num );
+					pData += num;
+				}
+				else{
+					break;
+				}
+				num = 0;
 			}
-			else{
-				Log("[server]:thread pool full.throw.\n");
-				closesocket(arg.sock);
-				++ log_throw;
-				Sleep(1);
+
+			++ log_recv;
+			Log("[server]:listen thread=%d,recv data = %d\n" , arg ,count);
+
+			EnterCriticalSection(&taskManagerCriticalSection);
+			taskManager.EnterSpecifyCriticalSection( arg ) ;
+			TaskQueue * curQueue = taskManager.getSpecifyQueue(arg);
+			bool ret = curQueue->push_back(data, count , arg , ip , ip);
+			int y = 0;
+			taskManager.LeaveSpecifyCritialSection( arg );
+
+			if( ret == false ){
+				for( int i = 0 ; i < 4 ; ++ i ){
+					taskManager.EnterSpecifyCriticalSection( i );
+					curQueue = taskManager.getSpecifyQueue( i );
+					if(curQueue&&(!curQueue->isFull())){
+						curQueue->push_back( data , count, i, ip , ip );
+						y ++;
+						break;
+					}
+					taskManager.LeaveSpecifyCritialSection(i);
+				}
+
+				if( y == 0 ){
+					Log("[server]:all task queue full\n");
+					++ log_throw ;
+				}
+				//server busy
+				//通知客户端重新发送
 			}
-			CloseHandle( h );
+			
+			LeaveCriticalSection(&taskManagerCriticalSection);
+			closesocket( sockClient );
 		}
 	}
 
-	DeleteCriticalSection(&recvThreadCS );
-	Log("[server]:stop.\n");
+	free( data );
+	free( buffer );
+	return 0;
 }
-
-class Server{
-public:
-	Server(){
-		
-	}
-
-	~Server(){
-		WSACleanup();
-	}
-
-	bool registerMac( string ward , string target ){
-		EnterCriticalSection( &taskManagerCriticalSection );
-		bool ret = taskManager.registerQueue(ward,target );
-		LeaveCriticalSection( &taskManagerCriticalSection );
-		return ret;
-	}
-
-	void start( void ){
-		CloseHandle((HANDLE)_beginthreadex( NULL , 0 , startListening ,NULL ,0,NULL));
-	}
-
-};
 
 #endif // !SERVER_H_

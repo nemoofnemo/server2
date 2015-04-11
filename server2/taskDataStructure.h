@@ -18,8 +18,26 @@
 #endif
 
 #define SRV_ERROR -1
-#define SRV_MAX_TASK_QUEUE_LENGTH 200
-#define SRV_MAX_TASK_QUEUE_NUM 10
+#define SRV_MAX_TASK_QUEUE_LENGTH 256
+#define SRV_MAX_TASK_QUEUE_NUM 32
+
+/**********************************数据统计****************************************/
+//建立的连接数
+int log_connect;
+//接收数据包的个数
+int log_recv;
+//服务器处理的数据包个数
+int log_use;
+//服务器扔掉的数据包个数
+int log_throw;
+//dump
+int log_dump;
+//invalid
+int log_invalid;
+//接收数据线程的最大数量
+const int srv_max_thread = 8;
+//当前负责接收数据的线程的数量
+int srv_cur_thread = 0;
 
 using std::pair;
 using std::vector;
@@ -33,18 +51,21 @@ class Task{
 public:
 	char * data;	//在TaskQueue的Push方法中分配内存，在pop内释放
 	int length;
-	bool visit;
+	int index ;
+	int visit;
 public:
 	Task( char * src , int length ){
 		data = src;
 		this->length = length;
-		visit = false;
+		visit = 0;
+		index = -1;
 	}
 
 	Task(){
 		data = NULL;
 		length = 0;
-		visit = false;
+		visit = 0;
+		index = -1;
 	}
 };
 
@@ -125,7 +146,7 @@ public:
 		return true;
 	}
 
-	bool push_back( char * src , int length , string ward = "NULL" , string target =  "NULL" ){
+	bool push_back( char * src , int length , int index , string ward = "NULL" , string target =  "NULL" ){
 		if( length < 0 || src == NULL ){
 			Log("error in taskQueue.pushBack\n");
 			return false;
@@ -262,7 +283,7 @@ public:
 		WSACleanup();
 	}
 
-	bool registerQueue( string wardMac ,string targetMac){
+	/*bool registerQueue( string wardMac ,string targetMac){
 		int i = 0;
 		int count = -1;
 		CRITICAL_SECTION cs;
@@ -289,6 +310,17 @@ public:
 			return true;
 		}
 		return false;
+	}*/
+
+	bool registerQueue( string wardMac , string targetMac ){
+		if( curQueueNumber == SRV_MAX_TASK_QUEUE_NUM ){
+			return false;
+		}
+		CRITICAL_SECTION cs;
+		taskQueues.push_back( pair<TaskQueue,CRITICAL_SECTION>(TaskQueue( wardMac , targetMac ) , cs) );
+		InitializeCriticalSectionAndSpinCount( &( taskQueues.back().second ) , 4096 );
+		++ curQueueNumber ;
+		return true;
 	}
 
 	//need test
